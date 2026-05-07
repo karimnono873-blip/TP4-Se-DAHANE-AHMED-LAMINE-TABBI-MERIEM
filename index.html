@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compte Rendu TP4 - Timers & PWM (Systèmes Embarqués)</title>
+    <style>
+        /* ================= VARIABLES & THEME ================= */
+        :root {
+            --pixel-blue: #8AB4F8;
+            --pixel-dark-blue: #1A73E8;
+            --pixel-violet: #A142F4;
+            --pixel-dark-violet: #6A1B9A;
+            --bg-deep-space: #0B0B1A;
+            --glass-bg: rgba(25, 25, 45, 0.6);
+            --glass-border: rgba(138, 180, 248, 0.2);
+            --text-main: #E8EAED;
+            --text-muted: #9AA0A6;
+            --glow-shadow: 0 0 20px rgba(161, 66, 244, 0.4);
+            --pwm-color: #00e5ff;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-deep-space); color: var(--text-main); overflow-x: hidden; line-height: 1.6; }
+
+        /* ================= ASTRONOMIC BACKGROUND ================= */
+        .stars {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+            background: 
+                radial-gradient(circle at 15% 50%, rgba(106, 27, 154, 0.15), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(26, 115, 232, 0.15), transparent 50%);
+        }
+        .star { position: absolute; background-color: white; border-radius: 50%; animation: twinkle infinite alternate; }
+        @keyframes twinkle { 0% { opacity: 0.1; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 8px white; } }
+
+        /* ================= PAGE DE GARDE ================= */
+        .cover-page {
+            min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; position: relative; padding: 2rem;
+        }
+        .cover-header { text-transform: uppercase; letter-spacing: 3px; color: var(--text-muted); margin-bottom: 2rem; font-size: 1.1rem; }
+        .cover-title { font-size: 4rem; font-weight: 800; background: linear-gradient(135deg, var(--pixel-blue), var(--pwm-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem; text-shadow: 0 0 40px rgba(0, 229, 255, 0.4); line-height: 1.2; }
+        .cover-subtitle { font-size: 1.8rem; color: var(--text-main); margin-bottom: 4rem; font-weight: 300; }
+        .cover-details { background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); padding: 2.5rem 4rem; border-radius: 20px; box-shadow: var(--glow-shadow); }
+        .cover-details h3 { color: var(--pixel-blue); font-size: 1.4rem; margin-bottom: 0.5rem; }
+        .cover-details p { font-size: 1.2rem; margin-bottom: 1.5rem; }
+        .cover-details .binomial { font-weight: bold; font-size: 1.3rem; color: var(--text-main); }
+        .scroll-indicator { position: absolute; bottom: 40px; animation: bounce 2s infinite; color: var(--pixel-blue); font-size: 2rem; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-20px); } 60% { transform: translateY(-10px); } }
+
+        /* ================= LAYOUT ================= */
+        .container { max-width: 1200px; margin: 0 auto; padding: 4rem 2rem; }
+        .section-title { font-size: 2.5rem; color: var(--pixel-blue); margin-bottom: 2rem; border-bottom: 2px solid var(--pwm-color); padding-bottom: 0.5rem; display: inline-block; }
+        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 2.5rem; margin-bottom: 3rem; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+
+        /* ================= TABS ================= */
+        .tabs { display: flex; gap: 1rem; margin-bottom: 2rem; justify-content: center; flex-wrap: wrap; }
+        .tab-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--pixel-blue); color: var(--pixel-blue); padding: 1rem 2rem; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 1.1rem; transition: all 0.3s ease; }
+        .tab-btn:hover, .tab-btn.active { background: linear-gradient(90deg, var(--pixel-dark-blue), var(--pwm-color)); color: #fff; border-color: transparent; box-shadow: 0 0 20px var(--pwm-color); }
+        .tab-content { display: none; animation: fadeIn 0.5s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ================= CODE BLOCKS ================= */
+        pre { background: #0d0d1a; border-left: 4px solid var(--pwm-color); padding: 1.5rem; border-radius: 8px; overflow-x: auto; font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; color: #a6accd; margin-top: 1.5rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        code .keyword { color: #89ddff; } code .function { color: #82aaff; } code .comment { color: #546e7a; font-style: italic; } code .number { color: #f78c6c; }
+
+        /* ================= HARDWARE VISUALIZATION ================= */
+        .hardware-container { display: flex; align-items: center; justify-content: center; gap: 2.5rem; margin: 1rem 0 2rem 0; padding: 3rem; background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%); border-radius: 16px; position: relative; flex-wrap: wrap;}
+        .board { width: 140px; height: 200px; background: #e0e0e0; border-radius: 12px; position: relative; box-shadow: 0 0 25px rgba(255,255,255,0.15); display: flex; flex-direction: column; align-items: center; }
+        .board::before { content: "NUCLEO C031"; color: #333; font-weight: bold; font-size: 0.85rem; margin-top: 15px; }
+        .chip { width: 45px; height: 45px; background: #222; margin-top: 25px; border-radius: 4px; }
+        .pin { width: 12px; height: 12px; background: #333; border-radius: 50%; position: absolute; }
+        .pin.pa5 { right: 10px; top: 60px; background: var(--pwm-color); box-shadow: 0 0 10px var(--pwm-color); }
+        
+        .component { text-align: center; display: flex; flex-direction: column; align-items: center;}
+        
+        /* LED Styling */
+        .led-viz { width: 40px; height: 40px; background: #111; border-radius: 50%; margin: 0 auto 10px; border: 2px solid #333; transition: all 0.1s ease; }
+        
+        /* Oscope Styling */
+        .oscope-container { background: #001100; border: 3px solid #333; border-radius: 10px; padding: 10px; box-shadow: inset 0 0 20px #000; position: relative; width: 300px; height: 150px; }
+        .oscope-grid { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: linear-gradient(rgba(0, 255, 0, 0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 0, 0.2) 1px, transparent 1px); background-size: 20px 20px; z-index: 1; pointer-events: none; }
+        canvas { position: relative; z-index: 2; width: 100%; height: 100%; }
+
+        /* Sliders */
+        .slider-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid var(--pwm-color); margin-bottom: 20px; text-align: center; }
+        .slider { -webkit-appearance: none; width: 200px; height: 8px; border-radius: 5px; background: #333; outline: none; margin: 15px 0; }
+        .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--pwm-color); cursor: pointer; box-shadow: 0 0 10px var(--pwm-color); }
+        .data-display { font-family: monospace; font-size: 1.2rem; color: #fff; background: #111; padding: 10px; border-radius: 5px; }
+        .highlight { color: var(--pwm-color); font-weight: bold; }
+
+        /* ================= POST-LAB ================= */
+        .qa-grid { display: flex; flex-direction: column; gap: 2rem; }
+        .qa-card { background: rgba(0, 0, 0, 0.3); border-left: 4px solid var(--pwm-color); padding: 2rem; border-radius: 8px; transition: all 0.3s ease; }
+        .qa-card:hover { background: rgba(0, 229, 255, 0.1); transform: translateX(10px); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .qa-question { font-size: 1.3rem; font-weight: bold; color: var(--pixel-blue); margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid rgba(138, 180, 248, 0.2); padding-bottom: 10px;}
+        .qa-question::before { content: "Q:"; color: var(--pwm-color); font-size: 1.5rem; }
+        .qa-answer { color: var(--text-main); line-height: 1.8; font-size: 1.05rem; }
+        .qa-answer strong { color: #fff; }
+        .formula-box { background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; color: var(--pwm-color); margin: 15px 0; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+
+    <div class="stars" id="stars"></div>
+
+    <section class="cover-page">
+        <div class="cover-header">Université / Département d'Électronique</div>
+        <h1 class="cover-title">Timers & Signaux PWM</h1>
+        <h2 class="cover-subtitle">Travaux Pratiques N°4 - Systèmes Embarqués</h2>
+        
+        <div class="cover-details">
+            <h3>Binôme Réalisateur</h3>
+            <p class="binomial">Dahane Ahmed Lamine<br>& Tabbi Meriem</p>
+            
+            <h3>Enseignante Responsable</h3>
+            <p>Mme. Afaf Saoud</p>
+            
+            <h3 style="margin-top: 1rem; font-size: 1rem; color: var(--text-muted);">Année Universitaire 2025/2026</h3>
+        </div>
+        
+        <div class="scroll-indicator">↓</div>
+    </section>
+
+    <div class="container">
+        
+        <h2 class="section-title">1. Jumeau Numérique (Oscilloscope Virtuel)</h2>
+        <section class="glass-panel">
+            
+            <p style="color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+                <strong>Objectif :</strong> Utiliser le composant matériel Timer (TIM3) pour générer un signal carré à rapport cyclique variable (PWM) afin de faire varier la luminosité de la LED sur PA5 sans bloquer le processeur.
+            </p>
+
+            <div class="slider-box">
+                <label style="font-size: 1.2rem; font-weight: bold; color: var(--pixel-blue);">Rapport Cyclique (Duty Cycle)</label><br>
+                <input type="range" min="0" max="100" value="50" class="slider" id="pwm-slider">
+                <div class="data-display">
+                    Rapport Cyclique : <span id="duty-val" class="highlight">50%</span> | CCRx : <span id="ccr-val" class="highlight">500</span> / 1000
+                </div>
+            </div>
+
+            <div class="hardware-container">
+                <div class="board">
+                    <div class="chip"></div>
+                    <div class="pin pa5" title="PA5 (TIM3_CH2)"></div>
+                </div>
+                
+                <div style="height: 4px; width: 50px; background: var(--pwm-color);"></div>
+                
+                <div class="component">
+                    <div class="led-viz" id="sim-led"></div>
+                    <p style="font-weight: bold;">LED Dimmable</p>
+                </div>
+
+                <div style="height: 4px; width: 50px; background: #555;"></div>
+
+                <div class="component">
+                    <div class="oscope-container">
+                        <div class="oscope-grid"></div>
+                        <canvas id="oscope-canvas" width="280" height="130"></canvas>
+                    </div>
+                    <p style="font-weight: bold; margin-top: 10px;">Oscilloscope (CH1)</p>
+                </div>
+            </div>
+
+            <h3 style="color: var(--pixel-blue); font-size: 1.5rem; margin-bottom: 0.5rem; margin-top: 2rem;">Code C : Modification dynamique de la PWM</h3>
+            <p style="color: var(--text-muted);">Contrairement aux délais logiciels (<code>HAL_Delay</code>), la PWM est générée par le matériel. Le CPU est libre de faire autre chose.</p>
+            <pre><code><span class="comment">// 1. Démarrage du signal PWM sur le Timer 3, Canal 2 (Lié à PA5)</span>
+<span class="function">HAL_TIM_PWM_Start</span>(&htim3, TIM_CHANNEL_2);
+
+<span class="comment">// Boucle infinie - main.c</span>
+<span class="keyword">while</span> (1) 
+{ 
+    <span class="comment">// Exemple : Augmenter progressivement la luminosité (Fading)</span>
+    <span class="keyword">for</span>(uint16_t duty = <span class="number">0</span>; duty <= <span class="number">1000</span>; duty += <span class="number">10</span>) 
+    {
+        <span class="comment">// __HAL_TIM_SET_COMPARE modifie le registre CCR (Capture/Compare Register)</span>
+        <span class="comment">// C'est ce registre qui dicte la largeur de l'impulsion (Duty Cycle)</span>
+        <span class="function">__HAL_TIM_SET_COMPARE</span>(&htim3, TIM_CHANNEL_2, duty);
+        
+        <span class="function">HAL_Delay</span>(<span class="number">10</span>); <span class="comment">// Vitesse de la transition visuelle</span>
+    }
+}</code></pre>
+        </section>
+
+        <h2 class="section-title">2. Post-Lab : Ingénierie des Timers</h2>
+        <section class="qa-grid">
+            
+            <div class="qa-card">
+                <div class="qa-question">Qu'est-ce que la PWM (Modulation de Largeur d'Impulsion) et quel est l'intérêt de la composante matérielle Timer par rapport à une boucle logicielle (HAL_Delay) ?</div>
+                <div class="qa-answer">
+                    <p>La <strong>PWM</strong> est une technique consistant à créer un signal carré dont on modifie le temps à l'état HAUT (Ton) par rapport à la période totale (T). Ce ratio est appelé <strong>Rapport Cyclique (Duty Cycle)</strong>. En jouant sur ce ratio à haute fréquence, on fait varier la valeur moyenne de la tension (ex: 50% = 1.65V moyen au lieu de 3.3V).</p>
+                    <p><strong>L'intérêt du Timer :</strong> Si on créait un signal PWM avec des <code>HAL_Delay()</code> et des <code>HAL_GPIO_WritePin()</code>, le microcontrôleur serait bloqué à 100% dans ces boucles d'attente (Bit-banging). En utilisant le périphérique matériel <strong>Timer</strong>, le processeur configure simplement les registres (Fréquence, Duty cycle) puis passe à autre chose. Le composant Timer génère ensuite le signal carré <strong>de manière totalement autonome en arrière-plan</strong>, libérant 100% du CPU pour l'ADC ou l'I2C.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">Le STM32C0 tourne à une fréquence système de 48 MHz. Comment calculer le "Prescaler (PSC)" et "l'Auto-Reload Register (ARR)" pour obtenir un signal PWM avec une fréquence de 1 kHz (1000 Hz) et une résolution de 1000 pas ?</div>
+                <div class="qa-answer">
+                    <p>La formule fondamentale de la fréquence d'un Timer STM32 est :</p>
+                    <div class="formula-box">F_PWM = F_CPU / ((PSC + 1) × (ARR + 1))</div>
+                    <p><strong>Étape 1 : Choix de la résolution (ARR).</strong> On veut pouvoir régler la luminosité de 0 à 1000 (100.0%). On fixe donc <strong>ARR = 999</strong> (car le compteur compte à partir de 0, donc 999+1 = 1000).</p>
+                    <p><strong>Étape 2 : Calcul du diviseur (Prescaler).</strong> On réarrange la formule :<br>
+                    (PSC + 1) = F_CPU / (F_PWM × (ARR + 1))<br>
+                    (PSC + 1) = 48 000 000 / (1000 × 1000)<br>
+                    (PSC + 1) = 48<br>
+                    Donc, <strong>PSC = 47</strong>.</p>
+                    <p><strong>Conclusion pour CubeMX :</strong> On entre <code>47</code> dans le champ <em>Prescaler</em> et <code>999</code> dans le champ <em>Counter Period (ARR)</em>.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">À quoi sert la macro __HAL_TIM_SET_COMPARE() ? </div>
+                <div class="qa-answer">
+                    <p>Le registre ARR définit la Période Totale (la fréquence de notre signal). Il ne change jamais en cours de route.<br>
+                    Le registre <strong>CCR (Capture/Compare Register)</strong>, lui, définit à quel moment le signal doit redescendre à ZÉRO (le rapport cyclique).</p>
+                    <p>La macro <code>__HAL_TIM_SET_COMPARE()</code> sert à écrire directement une nouvelle valeur dans le registre CCR à la volée. Si ARR vaut 1000, et qu'on utilise <code>__HAL_TIM_SET_COMPARE(&htim, channel, 250)</code>, le signal restera à l'état HAUT pendant 25% du temps (250/1000), ce qui allumera la LED à 25% de sa puissance maximale.</p>
+                </div>
+            </div>
+
+        </section>
+    </div>
+
+    <script>
+        // 1. Generation des étoiles
+        const starContainer = document.getElementById('stars');
+        for (let i = 0; i < 200; i++) {
+            let star = document.createElement('div');
+            star.className = 'star';
+            star.style.width = Math.random() * 3 + 'px';
+            star.style.height = star.style.width;
+            star.style.left = Math.random() * 100 + 'vw';
+            star.style.top = Math.random() * 100 + 'vh';
+            star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            star.style.animationDelay = Math.random() * 5 + 's';
+            starContainer.appendChild(star);
+        }
+
+        // ================= LOGIQUE DU JUMEAU NUMERIQUE (PWM) =================
+        const pwmSlider = document.getElementById('pwm-slider');
+        const dutyVal = document.getElementById('duty-val');
+        const ccrVal = document.getElementById('ccr-val');
+        const simLed = document.getElementById('sim-led');
+        const canvas = document.getElementById('oscope-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function drawOscilloscope(dutyCyclePercentage) {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Effacer le canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Configuration de la ligne
+            ctx.beginPath();
+            ctx.strokeStyle = '#00ff00'; // Vert fluo
+            ctx.lineWidth = 3;
+            ctx.lineJoin = 'round';
+
+            const periods = 3; // Dessiner 3 périodes
+            const periodWidth = width / periods;
+            const highTime = periodWidth * (dutyCyclePercentage / 100);
+            
+            // Hauteurs (Y)
+            const yHigh = 20; // État HAUT (3.3V)
+            const yLow = height - 20; // État BAS (0V)
+
+            let x = 0;
+            ctx.moveTo(x, dutyCyclePercentage === 0 ? yLow : yHigh);
+
+            for (let i = 0; i < periods; i++) {
+                const startX = i * periodWidth;
+                
+                if (dutyCyclePercentage === 0) {
+                    ctx.lineTo(startX + periodWidth, yLow);
+                } else if (dutyCyclePercentage === 100) {
+                    ctx.lineTo(startX + periodWidth, yHigh);
+                } else {
+                    // Ligne Haute
+                    ctx.lineTo(startX + highTime, yHigh);
+                    // Front Descendant
+                    ctx.lineTo(startX + highTime, yLow);
+                    // Ligne Basse
+                    ctx.lineTo(startX + periodWidth, yLow);
+                    // Front Montant
+                    if (i < periods - 1) {
+                        ctx.lineTo(startX + periodWidth, yHigh);
+                    }
+                }
+            }
+            
+            // Ajouter un effet de "glow" sur l'oscilloscope
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00ff00';
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Reset pour ne pas affecter d'autres dessins éventuels
+        }
+
+        function updatePWM() {
+            const duty = parseInt(pwmSlider.value); // 0 to 100
+            
+            // Update Text
+            dutyVal.innerText = duty + '%';
+            ccrVal.innerText = (duty * 10); // Map 0-100 to 0-1000 ARR
+
+            // Update LED Visuals (Opacity + Box Shadow glow)
+            // L'œil humain a une perception logarithmique, on ajuste un peu l'opacité pour que ce soit réaliste
+            let opacity = duty / 100;
+            if (opacity > 0) {
+                simLed.style.backgroundColor = `rgba(0, 255, 0, ${opacity + 0.2})`;
+                simLed.style.boxShadow = `0 0 ${duty/2}px #00ff00, inset 0 0 ${duty/4}px white`;
+            } else {
+                simLed.style.backgroundColor = '#111';
+                simLed.style.boxShadow = 'none';
+            }
+
+            // Draw Oscilloscope
+            drawOscilloscope(duty);
+        }
+
+        // Event Listener
+        pwmSlider.addEventListener('input', updatePWM);
+
+        // Initial Draw
+        updatePWM();
+    </script>
+</body>
+</html>
